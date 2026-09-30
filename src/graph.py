@@ -4,7 +4,7 @@ from typing import TypedDict
 from dotenv import load_dotenv
 from huggingface_hub import InferenceClient
 from langgraph.graph import StateGraph, START, END
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_core.embeddings import Embeddings
 from langchain_pinecone import PineconeVectorStore
 
 from src.config import PINECONE_INDEX_NAME
@@ -20,20 +20,42 @@ class AgentState(TypedDict):
     score: float
 
 
-# Local embedding model
-embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
-)
+class HFEmbeddings(Embeddings):
+
+    def __init__(self):
+        self.client = InferenceClient(
+            api_key=os.getenv("HF_TOKEN")
+        )
+        self.model = "sentence-transformers/all-MiniLM-L6-v2"
+
+    def embed_query(self, text: str):
+        result = self.client.feature_extraction(
+            text,
+            model=self.model
+        )
+
+        # Convert returned embedding to a simple list
+        if hasattr(result, "tolist"):
+            result = result.tolist()
+
+        while result and isinstance(result[0], list):
+            result = result[0]
+
+        return result
+
+    def embed_documents(self, texts):
+        return [self.embed_query(text) for text in texts]
 
 
-# Pinecone vector store
+embeddings = HFEmbeddings()
+
+
 vectorstore = PineconeVectorStore(
     index_name=PINECONE_INDEX_NAME,
     embedding=embeddings
 )
 
 
-# Hugging Face Inference Client
 hf_client = InferenceClient(
     api_key=os.getenv("HF_TOKEN"),
     provider="auto"
@@ -41,6 +63,7 @@ hf_client = InferenceClient(
 
 
 def retrieve(state: AgentState):
+
     question = state["question"]
 
     results = vectorstore.similarity_search_with_score(
@@ -58,10 +81,7 @@ def retrieve(state: AgentState):
         for document, score in results
     ]
 
-    if scores:
-        confidence = sum(scores) / len(scores)
-    else:
-        confidence = 0.0
+    confidence = sum(scores) / len(scores) if scores else 0.0
 
     return {
         "context": context,
@@ -70,6 +90,7 @@ def retrieve(state: AgentState):
 
 
 def generate(state: AgentState):
+
     context = "\n\n".join(state["context"])
     question = state["question"]
 
