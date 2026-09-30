@@ -1,11 +1,16 @@
+import os
 from typing import TypedDict
 
+from dotenv import load_dotenv
+from huggingface_hub import InferenceClient
 from langgraph.graph import StateGraph, START, END
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_pinecone import PineconeVectorStore
-from langchain_ollama import ChatOllama
 
 from src.config import PINECONE_INDEX_NAME
+
+
+load_dotenv()
 
 
 class AgentState(TypedDict):
@@ -28,10 +33,10 @@ vectorstore = PineconeVectorStore(
 )
 
 
-# Local Ollama LLM
-llm = ChatOllama(
-    model="llama3.2:3b",
-    temperature=0
+# Hugging Face Inference Client
+hf_client = InferenceClient(
+    api_key=os.getenv("HF_TOKEN"),
+    provider="auto"
 )
 
 
@@ -89,10 +94,20 @@ User question:
 {question}
 """
 
-    response = llm.invoke(prompt)
+    response = hf_client.chat.completions.create(
+        model="openai/gpt-oss-120b",
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        temperature=0,
+        max_tokens=500
+    )
 
     return {
-        "answer": response.content
+        "answer": response.choices[0].message.content
     }
 
 
