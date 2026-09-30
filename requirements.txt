@@ -12,3 +12,4 @@ streamlit>=1.32.0
 python-dotenv>=1.0.0
 langchain-huggingface
 huggingface-hub
+sentence-transformers
